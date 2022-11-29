@@ -36,6 +36,20 @@ teams_without_rosters <- teams %>%
 * Country
 * Height in inches
 
+# Height Cleaning
+
+* Still need to add a single column with total inches using feet and inches.
+
+```{r}
+wbb_rosters23 <- wbb_rosters23 %>% mutate(
+  height = str_replace(height, '-', "'")
+)
+wbb_rosters23 <- wbb_rosters23 %>% separate(col=height, into=c("height_ft", "height_in"), sep="'", extra="merge")
+wbb_rosters23 <- wbb_rosters23 %>% mutate(height_in = str_replace(height_in, '"', " "))
+wbb_rosters23$height <- paste(wbb_rosters23$height_ft, "-", wbb_rosters23$height_in)
+```
+
+
 # Positions Cleaning
 
 ```{r}
