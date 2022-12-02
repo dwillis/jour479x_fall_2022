@@ -167,6 +167,20 @@ wbb_rosters23 <- wbb_rosters23 %>% mutate(homestate=str_trim(homestate), homesta
 
 Take the list of FIBA nations (https://www.fiba.basketball/rankingwomen) and make a list or dataframe of them, then compare that to the values in the `homestate` column generated above and populate a new column for country.
 
+I'm using the above approach to scrape the FIBA nations and put them in a dataframe. My logic is then as following:
+- Make a new column for country
+- Populate this column with USA when there is a state identified by postmaster
+- Then we are splitting the hometown_cleaned column by a ", " and taking the last item that was split by that function. This should give us either a state or a country, since country is listed as the last item in homewtown cleaned in the format "[city], [state], [country]", or "[city], [country]". Once we have this item we make it its own column "temp"
+- There are a few popular cases where a player's state is listed as a province in Canada. Since there are so many of these occurrences, we will just set the country to Canada when this happens, similar to the U.S. logic
+- Make the country uppercase to standardize
+- Add popular nations that aren't in FIBA to the FIBA dataframe
+- Use this FIBA dataframe as a list of countries to join on "temp"
+- When the "temp" column had a successful join with the FIBA countries, we know that it's a recognized country. Then we will take this "temp" value and put it in "country. Otherwise we'll keep the current country value (Canada, USA)
+- Then we'll drop the columns we don't need anymore
+
+--- JETSON
+
+
 ```{r}
 fibaurl <- "https://www.fiba.basketball/rankingwomen"
 nations <- fibaurl %>%
@@ -177,9 +191,18 @@ nations_df <- nations[[1]]
 wbb_rosters23 <- mutate(wbb_rosters23, country = case_when(!is.na(pm.state) ~ "USA"))
 
 
-wbb_rosters23 <- wbb_rosters23 %>% mutate(temp = sapply(strsplit(hometown_cleaned, ", ", fixed=TRUE), tail, 1))
+wbb_rosters23 <- wbb_rosters23 %>% mutate(temp = sapply(strsplit(wbb_rosters23$hometown_cleaned, ", ", fixed=TRUE), tail, 1))
 
-wbb_rosters23 <- mutate(wbb_rosters23, country = case_when(temp %in% c('BC', 'QUEBEC', 'BRITISH COLUMBIA', 'ALBERTA', 'ONTARIO') ~ "CANADA", TRUE ~ country))
+wbb_rosters23 <- mutate(wbb_rosters23, country = case_when(
+  temp %in% c('BC', 'QUEBEC', 'BRITISH COLUMBIA', 'ALBERTA', 'ONTARIO', 'NOVA SCOTIA', 'ONT') ~ "CANADA", 
+  temp == "THE NETHERLANDS" ~ "NETHERLANDS", 
+  temp == "SOUTH AUSTRALIA" ~ "AUSTRALIA",  
+  temp == "WESTERN AUSTRALIA" ~ "AUSTRALIA",
+  temp == "BOSNIA" ~ "BOSNIA AND HERZEGOVINA",
+  temp == "MACEDONIA" ~ "MACEDONIA",
+  temp == "TAIWAN" ~ "TAIWAN",
+  temp == "PAPUA NEW GUINEA" ~ "PAPUA NEW GUINEA",
+  TRUE ~ country))
 
 nations_df$Country <- toupper(nations_df$Country)
 
@@ -201,10 +224,15 @@ wbb_rosters23 <- mutate(wbb_rosters23, country = case_when((!is.na(Worldrank) & 
 
 wbb_rosters23 <- subset(wbb_rosters23, select = -c(Worldrank,Zonerank,IOC,`Current points`, `+/- Rank *`) )
 
-wbb_rosters23 %>% filter(is.na(country)) %>% group_by(temp) %>% summarise(count=n()) %>% arrange(desc(count))
+wbb_rosters23 %>% filter(is.na(country))
+```
+```{r}
+wbb_rosters23 %>% group_by(hometown,homestate, country) %>% summarise(count=n()) %>% arrange(desc(count))
+wbb_rosters23 <- subset(wbb_rosters23, select = -c(temp) )
+
 ```
 
-
+# Data Exploration Section
 
 
 #Which teams/conferences/divisions have the most first-year players? Which have the most seniors & graduate students?
@@ -228,3 +256,36 @@ conference_seniors_grad <- wbb_rosters23 %>% filter(year_clean == "Senior" | yea
 division_seniors_grad <- wbb_rosters23 %>% filter(year_clean == "Senior" | year_clean == "Graduate Student" | year_clean == "Sixth Year" | year_clean == "Fifth Year") %>% group_by(division) %>% summarise(count = n()) %>% arrange(desc(count))
 #D1 has, by far, the most seniors and grad students. D1 has 1.6x times as many seniors and grad students as D3 (second most). 
 ```
+
+
+
+#Data exploration: which teams/conferences/divisions have the most/least in-state players?
+```{r}
+team_in_state_players_na <- wbb_rosters23  %>%
+  group_by(team, team_state, pm.state, division, conference) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  filter(is.na(pm.state))
+
+team_recruiting <- wbb_rosters23 %>%
+  group_by(team, team_state, pm.state) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+conference_recruiting <- wbb_rosters23 %>%
+  group_by(conference, team_state, pm.state) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+division_recruiting <- wbb_rosters23 %>%
+  group_by(division, team_state, pm.state) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+
+wbb_rosters23 %>% group_by(team_state) %>% summarise(count = n_distinct(team)) %>% arrange(desc(count))
+
+wbb_rosters23 %>% filter(is.na(team_state))
+```
+
+In a lot of cases, we got NA as a result for the pm.state. In the cases of the DI schools, this meant that someone was an international player. 
+
