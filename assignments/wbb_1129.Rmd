@@ -50,6 +50,22 @@ We've got 98 with NA heights.
 ```{r}
 wbb_rosters23 %>% filter(is.na(total_inches)) %>% group_by(team) %>% summarize(count = n()) %>% arrange(desc(count))
 ```
+
+#To populate missing heights, I manually inputted data from rosters I found online on team websites. If heights were not available online, in the case of Oakland, I pulled data from ESPN. Here are the sites I looked at.
+--> https://salemtigers.com/sports/womens-basketball/roster
+--> https://athletics.geneva.edu/sports/womens-basketball/roster/taylor-haring/2887 
+--> https://goldengrizzlies.com/sports/womens-basketball/roster
+--> https://www.espn.com/womens-college-basketball/team/roster/_/id/2473/oakland-golden-grizzlies 
+--> https://www.sagehens.com/sports/wbkb/2021-22/roster 
+
+
+#I identified several issues with the data during this process.
+--> Mariona Garcia of Salem (WV) was not on team's official roster (she did play in 2 games, so is in the stats)
+--> Neither ESPN nor the official Oakland roster listed height for Brooke Daniels.
+--> Neither ESPN nor the official Oakland roster listed height for Eve Pardo.
+--> Neither ESPN nor the official Oakland roster listed height for Lianna Baxter of Oakland.
+--> Pomona-Pitzer is a special case and requires a different scrape become of the nature of the joint nature of the team. Here is the link to the roster: https://www.sagehens.com/sports/wbkb/2022-23/roster
+
 # Positions Cleaning
 
 ```{r}
@@ -57,7 +73,15 @@ wbb_rosters23 %>% filter(is.na(total_inches)) %>% group_by(team) %>% summarize(c
 positions_cleaned <- read_csv("https://raw.githubusercontent.com/dwillis/jour479x_fall_2022/main/data/wbb_positions.csv") %>%
   select(-count)
 
-wbb_rosters23 <- wbb_rosters23 %>% inner_join(positions_cleaned, by = "position") 
+# replace Ball State's position column with NAs
+wbb_rosters23 <- wbb_rosters23 %>% mutate(position = ifelse(ncaa_id == 47, NA, position))
+
+# need to fix rows where the height is also in the position column
+# in many of those cases we used information from biography pages and/or previous teams or news coverage to assign the position.
+
+position_fixes <- wbb_rosters23 %>% left_join(positions_cleaned, by = "position") %>% filter(position == height)
+
+wbb_rosters23 <- wbb_rosters23 %>% left_join(positions_cleaned, by = "position")
 
 wbb_rosters23 %>% distinct(position_clean)
 
@@ -77,20 +101,31 @@ wbb_rosters23 <- wbb_rosters23 %>% filter(!grepl("5", wbb_rosters23$secondary_po
 wbb_rosters23 <- wbb_rosters23 %>% filter(!grepl("6", wbb_rosters23$secondary_position))
 wbb_rosters23 %>% group_by(primary_position) %>% summarise(count = n()) %>% arrange(desc(count))
 wbb_rosters23 %>% group_by(secondary_position) %>% summarise(count = n()) %>% arrange(desc(count))
-  
+
+
+write_csv(wbb_rosters23 %>% filter(is.na(position_full)), "~/code/jour479x_fall_2022/data/missing_positions.csv")
+
 ```
 
 # Years Cleaning
 
+12/6 - Need to check NA year_clean and regenerate yearscleaned.csv with new entries from year. Need to update ~29 rows:
+
+Liberty
+https://golobos.com/sports/wbball/roster/season/2022-23/player/amaya-brown/ (RS-Sr.)
+https://www.valpoathletics.com/wbasketball/roster/2022-23/12601/ilysse-pitts/ (5th)
+https://csurams.com/sports/womens-basketball/roster/petra-farkas/8848 & https://ysusports.com/sports/womens-basketball/roster/lindsey-mack/6141 (Fifth Year)
+https://lsusports.net/sports/wbball/roster/player/alexis-morris/ (5th-year Senior)
+
+
+
 ```{r}
 years_cleaned <- read_csv("https://raw.githubusercontent.com/dwillis/jour479x_fall_2022/main/data/yearscleaned.csv")
 
-wbb_rosters23 <- inner_join(wbb_rosters23, years_cleaned) %>% rename(year_clean = `year-clean`)
+missing_years <- left_join(wbb_rosters23, years_cleaned) %>% rename(year_clean = `year-clean`) %>% filter(is.na(year_clean))
 
-wbb_rosters23 <- wbb_rosters23 %>% 
-  select(-count)
+wbb_rosters23 <- left_join(wbb_rosters23, years_cleaned) %>% rename(year_clean = `year-clean`) %>% select(-count)
 
-wbb_rosters23 %>% distinct(year_clean)
 ```
 
 # Previous School Cleaning
@@ -257,8 +292,6 @@ division_seniors_grad <- wbb_rosters23 %>% filter(year_clean == "Senior" | year_
 #D1 has, by far, the most seniors and grad students. D1 has 1.6x times as many seniors and grad students as D3 (second most). 
 ```
 
-
-
 #Data exploration: which teams/conferences/divisions have the most/least in-state players?
 ```{r}
 team_in_state_players_na <- wbb_rosters23  %>%
@@ -289,3 +322,9 @@ wbb_rosters23 %>% filter(is.na(team_state))
 
 In a lot of cases, we got NA as a result for the pm.state. In the cases of the DI schools, this meant that someone was an international player. 
 
+# Final Cleaning
+
+```{r}
+wbb_rosters23 <- wbb_rosters23 %>% 
+  rename(team_clean = team, height_clean = height, position_clean = position_full, previous_school_clean = previous_school, hometown_clean = hometown_cleaned, state_cleaned = pm.state, foreign_nation_clean = country)
+```
